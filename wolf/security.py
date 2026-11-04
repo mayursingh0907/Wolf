@@ -1,26 +1,12 @@
+"""Small allowlist helpers. Desktop actions never execute arbitrary shell text."""
 
-# WOLF Security: only approved commands are allowed.
-
-ALLOWED_COMMANDS = {
-    "hello",
-    "hi",
-    "hey wolf",
-    "who are you",
-    "what is your name",
-    "time",
-    "what time is it",
-    "date",
-    "what is today's date",
-    "help",
-    "open google",
-    "open youtube",
-    "open github",
-    "exit",
-    "quit",
-    "stop wolf",
-}
+ALLOWED_APPS = {"notepad", "calculator", "vs code"}
+ALLOWED_WEBSITES = {"google", "youtube", "github", "instagram"}
 
 
-def is_allowed_command(command: str) -> bool:
-    """Check whether a command is explicitly allowed."""
-    return command.strip().lower() in ALLOWED_COMMANDS
+def is_allowed_app(name: str) -> bool:
+    return (name or "").strip().lower() in ALLOWED_APPS
+
+
+def is_allowed_website(name: str) -> bool:
+    return (name or "").strip().lower() in ALLOWED_WEBSITES

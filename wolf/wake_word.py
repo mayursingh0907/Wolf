@@ -1,169 +1,98 @@
-
 import json
-import os
 import re
+from pathlib import Path
 
 import pyaudio
 from vosk import Model, KaldiRecognizer, SetLogLevel
 
 
 class WolfWakeWord:
-
     def __init__(self):
+        project_root = Path(__file__).resolve().parent.parent
+        self.model_path = project_root / "models" / "vosk-model-small-en-us-0.15"
 
-        self.model_path = os.path.join(
-            "models",
-            "vosk-model-small-en-us-0.15"
-        )
-
-        if not os.path.isdir(self.model_path):
+        if not self.model_path.is_dir():
             raise FileNotFoundError(
-                "Vosk model not found."
+                f"Vosk model not found at: {self.model_path}"
             )
 
         SetLogLevel(-1)
-
         print("[WAKE WORD] Loading offline model...")
-
-        self.model = Model(self.model_path)
+        self.model = Model(str(self.model_path))
 
         self.wake_phrases = [
             "wake up wolf",
             "wake up wulf",
             "wake up woof",
             "wake up woolf",
-            "wake up wall",
-            "wake a wolf"
         ]
-
-        # Help Vosk focus on likely wake-word phrases.
-        grammar = self.wake_phrases + [
-            "[unk]"
-        ]
-
-        self.grammar = json.dumps(grammar)
-
+        self.grammar = json.dumps(self.wake_phrases + ["[unk]"])
         print("[WAKE WORD] Model loaded successfully.")
 
-    def normalize(self, text):
-
-        text = text.lower()
-
-        text = re.sub(
-            r"[^a-z ]",
-            "",
-            text
-        )
-
+    @staticmethod
+    def normalize(text):
+        text = (text or "").lower()
+        text = re.sub(r"[^a-z ]", " ", text)
         return " ".join(text.split())
 
     def is_wake_word(self, text):
-
-        text = self.normalize(text)
-
-        return any(
-            phrase in text
-            for phrase in self.wake_phrases
-        )
+        normalized = self.normalize(text)
+        return any(phrase in normalized for phrase in self.wake_phrases)
 
     def wait_for_wake_word(self):
-
         audio = pyaudio.PyAudio()
         stream = None
 
         try:
-
             device_info = audio.get_default_input_device_info()
-
-            sample_rate = int(
-                device_info["defaultSampleRate"]
-            )
-
-            recognizer = KaldiRecognizer(
-                self.model,
-                sample_rate,
-                self.grammar
-            )
+            sample_rate = int(device_info["defaultSampleRate"])
+            recognizer = KaldiRecognizer(self.model, sample_rate, self.grammar)
 
             stream = audio.open(
                 format=pyaudio.paInt16,
                 channels=1,
                 rate=sample_rate,
                 input=True,
-                frames_per_buffer=4000
+                frames_per_buffer=4000,
             )
-
             stream.start_stream()
 
             print("\n================================")
             print("       WOLF STANDBY MODE")
             print("================================")
             print("Say: WAKE UP WOLF")
-            print("Offline voice detection active.")
-            print("Listening for your wake word...")
+            print("Offline wake-word detection active.")
             print("================================\n")
 
-            last_text = ""
+            last_displayed = ""
 
             while True:
-
-                data = stream.read(
-                    4000,
-                    exception_on_overflow=False
-                )
+                data = stream.read(4000, exception_on_overflow=False)
 
                 if recognizer.AcceptWaveform(data):
-
-                    result = json.loads(
-                        recognizer.Result()
-                    )
-
-                    detected_text = result.get(
-                        "text", ""
-                    )
-
+                    result = json.loads(recognizer.Result())
+                    heard = result.get("text", "")
                 else:
+                    result = json.loads(recognizer.PartialResult())
+                    heard = result.get("partial", "")
 
-                    result = json.loads(
-                        recognizer.PartialResult()
-                    )
+                heard = self.normalize(heard)
 
-                    detected_text = result.get(
-                        "partial", ""
-                    )
+                # Suppress blank/unknown fragments to keep the console clean.
+                if heard and heard != "[unk]" and heard != last_displayed:
+                    if any(word in heard for word in ("wake", "wolf", "wulf", "woof")):
+                        print("[HEARD]", heard)
+                    last_displayed = heard
 
-                detected_text = self.normalize(
-                    detected_text
-                )
-
-                # Show what Vosk hears.
-                if detected_text and detected_text != last_text:
-
-                    print("[HEARD]", detected_text)
-
-                    last_text = detected_text
-
-                if self.is_wake_word(detected_text):
-
+                if self.is_wake_word(heard):
                     print("\n[WAKE WORD] WOLF ACTIVATED!")
-
                     return True
 
-        except KeyboardInterrupt:
-            raise
-
-        except Exception as error:
-
-            print("[WAKE WORD ERROR]", repr(error))
-            raise
-
         finally:
-
             if stream is not None:
-
-                if stream.is_active():
-                    stream.stop_stream()
-
-                stream.close()
-
+                try:
+                    if stream.is_active():
+                        stream.stop_stream()
+                finally:
+                    stream.close()
             audio.terminate()

@@ -1,4 +1,3 @@
-
 .venv/
 __pycache__/
 *.py[cod]
@@ -8,4 +7,3 @@ __pycache__/
 .vscode/
 models/
 vosk-model.zip
-
